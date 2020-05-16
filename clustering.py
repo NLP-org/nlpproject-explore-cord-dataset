@@ -4,7 +4,7 @@ import os
 import torch
 import pickle
 
-def createClusters(data, min_distance = 0.3, min_points_in_cluster = 20, doc_ids = []):
+def createClusters(data, min_distance = 0.3, min_points_in_cluster = 10, doc_ids = []):
   db = DBSCAN(eps=min_distance, min_samples=min_points_in_cluster, metric = 'cosine').fit(data)
   labels = db.labels_
   unique_labels = len(set(labels))
@@ -22,42 +22,53 @@ def createClusters(data, min_distance = 0.3, min_points_in_cluster = 20, doc_ids
     clusters[label].append(doc_id)
   return labels, clusters, centroids
 
-def cosineSimilarity(vector1, vector2):
-  return np.dot(vector1,vector2)/(np.sqrt(np.dot(vector1,vector1)*np.dot(vector2,vector2)))
+bert_types = ["new_embeddings_mean/sci_uncased"]
+embedding_types = ["abstract_embedding", "document_embedding"]
+#min_distance_types = [10, 5, 1, 0.5, 0.1, 0.01, 0.001, 0.0001, 0.00001]
+min_distance_types = np.logspace(1, -10, num=50)
 
-def findCluster(input_embedding, cluster_embeddings):
-  cosine_similarities = np.array([cosineSimilarity(input_embedding,cluster_embedding) for cluster_embedding in cluster_embeddings])
-  return np.argmax(cosine_similarities)
+for bert in bert_types:
+  for embed in embedding_types:
+    directory = os.path.join(bert, embed)
+    doc_ids = []
+    data = []
+    doc_passage_ids = []
+    embedding = None
 
-directory = "bert_embeddings_500_base_uncased/abstract_embedding"
-folders =  os.listdir(directory)
-doc_ids = []
-data = []
-for folder in folders:
-  path = directory + "/" + folder + "/pdf_json"
-  files = os.listdir(path)
-  print(path, len(files))
-  for f in files:
-    doc_ids.append(f)   
-    embedding = torch.load(path+"/"+f)
-    embedding = embedding.reshape(768)
-    data.append(list(embedding.data.cpu().numpy()))
-print("Loaded data")
-print(len(data))
+    files = os.listdir(directory) # list of embedding files
+    print(directory, len(files))
 
-labels, clusters, centroids = createClusters(data, min_distance = 0.001, min_points_in_cluster = 20, doc_ids = doc_ids)
-doc_info = {doc_ids[i]:labels[i] for i in range(len(doc_ids))}
-cluster_info = {i:centroids[i] for i in range(len(centroids))}
-cluster_id_to_doc_ids = {i:clusters[i] for i in range(len(clusters))}
-print(cluster_id_to_doc_ids)
-print("Number of clusters", len(clusters))
-with open('bert_embeddings_500_base_uncased_abstract_doc_info.pkl', 'wb') as f:
-  pickle.dump(doc_info, f)
+    for f in files:
+      doc_ids.append(f) # doc id list
+      embedding = torch.load(os.path.join(directory,f))
+      embedding = embedding.reshape(768)
+      data.append(list(embedding.data.cpu().numpy()))
 
-with open('bert_embeddings_500_base_uncased_abstract_cluster_id_to_centroid.pkl', 'wb') as f:
-  pickle.dump(cluster_info, f)
+    print("Loaded data:cos sci mean")
+    print(len(data))
 
-with open('bert_embeddings_500_base_uncased_abstract_cluster_id_to_doc_ids.pkl', 'wb') as f:
-  pickle.dump(cluster_id_to_doc_ids, f)
-for key in cluster_id_to_doc_ids.keys():
- print("Cluster ID:{},Number of Documents:{}".format(key, len(cluster_id_to_doc_ids[key]) ))
+    for i_ in range(len(min_distance_types)):
+      doc_info = {}
+      cluster_info = {}
+      cluster_id_to_doc_ids = {}
+      labels, clusters, centroids = createClusters(data, min_distance = min_distance_types[i_], min_points_in_cluster = 10, doc_ids = doc_ids)
+      doc_info = {doc_ids[i]:labels[i] for i in range(len(doc_ids))}
+      cluster_info = {i:centroids[i] for i in range(len(centroids))}
+      cluster_id_to_doc_ids = {i:clusters[i] for i in range(len(clusters))}
+      
+      print("eps {}, Number of clusters {}".format(min_distance_types[i_], len(clusters)))
+      #for key, value in cluster_id_to_doc_ids.items():
+      #  print('Cluster {} : {} documents'.format(key, len(value))) 
+      with open('{}/{}_doc_to_cluster_{}.pkl'.format(bert, embed, str(i_)), 'wb') as f:
+        pickle.dump(doc_info, f)
+      with open('{}/{}_cluster_id_to_centroid_{}.pkl'.format(bert, embed, str(i_)), 'wb') as f:
+        pickle.dump(cluster_info, f)
+      with open('{}/{}_cluster_id_to_doc_ids_{}.pkl'.format(bert, embed, str(i_)), 'wb') as f:
+        pickle.dump(cluster_id_to_doc_ids, f)
+
+    print('Type {} is done'.format(embed))
+    print('...................................')
+  print('Type {} is done.'.format(bert))
+  print('--------------------------------------')
+
+

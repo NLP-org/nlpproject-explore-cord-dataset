@@ -1,4 +1,4 @@
-from transformers import BertTokenizer, BertModel, BertConfig
+from transformers import *
 import torch
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -33,15 +33,30 @@ class COVIDModel:
             #self.model.bert.embeddings.requires_grad = False
         if model_name == 'scibert-scivocab-uncased':
             configuration = BertConfig()
-            self.embedding_size = 1024
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name + '/' + self.model_name)
-            self.model = AutoModel.from_pretrained(self.model_name + '/' + self.model_name)
+            self.embedding_size = 768
+            self.tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+            self.model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
             self.model.to(device)
             self.model.eval()
             for param in self.model.parameters():
                 param.requires_grad = False
-
-
+        if model_name == 'bert-base-multilingual-cased':
+            configuration = BertConfig()
+            self.tokenizer = BertTokenizer.from_pretrained(self.model_name)
+            self.model = BertModel(configuration).from_pretrained(self.model_name)
+            self.model.to(device)
+            self.model.eval()
+            for param in self.model.parameters():
+                param.requires_grad = False
+            self.embedding_size = 768
+        if model_name == 'biobert':
+            self.model  = BertModel.from_pretrained("biobert")
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+            self.model.to(device) 
+            self.model.eval()
+            for param in self.model.parameters():
+                param.requires_grad = False
+            self.embedding_size = 768
     def padTokens(self, tokens):
         if len(tokens)<self.max_length:
             tokens = tokens + ["[PAD]" for i in range(self.max_length - len(tokens))]
